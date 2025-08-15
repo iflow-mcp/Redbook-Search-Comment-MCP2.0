@@ -24,7 +24,7 @@ dependencies = [
     "uvicorn>=0.22.0",
     "fastmcp",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "MIT"}
 
