@@ -1497,8 +1497,6 @@ def main():
     print("请在MCP客户端（如Claude for Desktop）中配置此服务器")
     mcp.run(transport='stdio')
 
+
 if __name__ == "__main__":
-    # 初始化并运行服务器
-    print("启动小红书MCP服务器...")
-    print("请在MCP客户端（如Claude for Desktop）中配置此服务器")
-    mcp.run(transport='stdio')    main()
+    main()
