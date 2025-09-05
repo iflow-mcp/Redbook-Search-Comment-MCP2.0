@@ -1,3 +1,5 @@
+import logging
+import sys
 from typing import Any, List, Dict, Optional
 import asyncio
 import json
@@ -23,6 +25,42 @@ os.makedirs(DATA_DIR, exist_ok=True)
 browser_context = None
 main_page = None
 is_logged_in = False
+
+
+# 配置日志 - 修复版本
+def setup_logger():
+    """设置并配置logger"""
+    logger = logging.getLogger("xiaohongshu_mcp")
+
+    # 清除现有的处理器，避免重复
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    # 设置日志级别
+    logger.setLevel(logging.DEBUG)
+
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.DEBUG)
+
+    # 创建格式化器
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+
+    # 添加处理器到logger
+    logger.addHandler(console_handler)
+
+    # 防止日志向上传播到根logger
+    logger.propagate = False
+
+    return logger
+
+
+# 初始化logger
+logger = setup_logger()
 
 def process_url(url: str) -> str:
     """处理URL，确保格式正确并保留所有参数
@@ -171,15 +209,15 @@ async def search_notes(keywords: str, limit: int = 5) -> str:
         
         # 打印页面HTML用于调试
         page_html = await main_page.content()
-        print(f"页面HTML片段: {page_html[10000:10500]}...")
+        logger.info(f"页面HTML片段: {page_html[10000:10500]}...")
         
         # 使用更精确的选择器获取帖子卡片
-        print("尝试获取帖子卡片...")
+        logger.info("尝试获取帖子卡片...")
         if not main_page:  # 添加空检查
             return "浏览器初始化失败，请重试"
             
         post_cards = await main_page.query_selector_all('section.note-item')
-        print(f"找到 {len(post_cards)} 个帖子卡片")
+        logger.info(f"找到 {len(post_cards)} 个帖子卡片")
         
         if not post_cards:
             # 尝试备用选择器
@@ -187,7 +225,7 @@ async def search_notes(keywords: str, limit: int = 5) -> str:
                 return "浏览器初始化失败，请重试"
                 
             post_cards = await main_page.query_selector_all('div[data-v-a264b01a]')
-            print(f"使用备用选择器找到 {len(post_cards)} 个帖子卡片")
+            logger.info(f"使用备用选择器找到 {len(post_cards)} 个帖子卡片")
         
         post_links = []
         post_titles = []
@@ -213,19 +251,19 @@ async def search_notes(keywords: str, limit: int = 5) -> str:
                     try:
                         # 打印卡片HTML用于调试
                         card_html = await card.inner_html() if card else ""  # 添加空检查
-                        print(f"卡片HTML片段: {card_html[:200]}...")
+                        logger.info(f"卡片HTML片段: {card_html[:200]}...")
                         
                         # 首先尝试获取卡片内的footer中的标题
                         title_element = await card.query_selector('div.footer a.title span') if card else None  # 添加空检查
                         if title_element:
                             title = await title_element.text_content() 
-                            print(f"找到标题(方法1): {title}")
+                            logger.info(f"找到标题(方法1): {title}")
                         else:
                             # 尝试直接获取标题元素
                             title_element = await card.query_selector('a.title span') if card else None  # 添加空检查
                             if title_element:
                                 title = await title_element.text_content()
-                                print(f"找到标题(方法2): {title}")
+                                logger.info(f"找到标题(方法2): {title}")
                             else:
                                 # 尝试获取任何可能的文本内容
                                 text_elements = await card.query_selector_all('span') if card else []  # 添加空检查
@@ -238,33 +276,33 @@ async def search_notes(keywords: str, limit: int = 5) -> str:
                                 if potential_titles:
                                     # 选择最长的文本作为标题
                                     title = max(potential_titles, key=len) if potential_titles else "未知标题"  # 添加空检查
-                                    print(f"找到可能的标题(方法3): {title}")
+                                    logger.info(f"找到可能的标题(方法3): {title}")
                                 else:
                                     # 尝试直接获取卡片中的所有文本
                                     if not card:  # 添加空检查
                                         title = "未知标题"
-                                        print("卡片为空，使用默认值'未知标题'")
+                                        logger.info("卡片为空，使用默认值'未知标题'")
                                     else:
                                         all_text = await card.evaluate('el => Array.from(el.querySelectorAll("*")).map(node => node.textContent).filter(text => text && text.trim().length > 5)')
                                         if all_text and isinstance(all_text, list) and all_text:  # 使用布尔检查替代len
                                             # 选择最长的文本作为标题
                                             title = max(all_text, key=len)
-                                            print(f"找到可能的标题(方法4): {title}")
+                                            logger.info(f"找到可能的标题(方法4): {title}")
                                         else:
                                             title = "未知标题"
-                                            print("无法找到标题，使用默认值'未知标题'")
+                                            logger.info("无法找到标题，使用默认值'未知标题'")
                         
                         # 如果获取到的标题为空，设为未知标题
                         if not title or (isinstance(title, str) and title.strip() == ""):  # 增加类型检查
                             title = "未知标题"
-                            print("获取到的标题为空，使用默认值'未知标题'")
+                            logger.info("获取到的标题为空，使用默认值'未知标题'")
                     except Exception as e:
-                        print(f"获取标题时出错: {str(e)}")
+                        logger.info(f"获取标题时出错: {str(e)}")
                         title = "未知标题"
                     
                     post_titles.append(title)
             except Exception as e:
-                print(f"处理帖子卡片时出错: {str(e)}")
+                logger.info(f"处理帖子卡片时出错: {str(e)}")
         
         # 去重
         unique_posts = []
@@ -307,7 +345,7 @@ async def get_note_content(url: str) -> str:
     try:
         # 使用通用URL处理函数
         processed_url = process_url(url)
-        print(f"处理后的URL: {processed_url}")
+        logger.info(f"处理后的URL: {processed_url}")
         
         # 访问帖子链接，保留完整参数
         await main_page.goto(processed_url, timeout=60000)
@@ -365,7 +403,7 @@ async def get_note_content(url: str) -> str:
         
         # 打印页面结构片段用于分析
         try:
-            print("打印页面结构片段用于分析")
+            logger.info("打印页面结构片段用于分析")
             if not main_page:  # 添加空检查
                 return "浏览器初始化失败，请重试"
                 
@@ -389,20 +427,20 @@ async def get_note_content(url: str) -> str:
                     };
                 }
             ''')
-            print(f"页面结构分析: {json.dumps(page_structure, ensure_ascii=False, indent=2)}")
+            logger.info(f"页面结构分析: {json.dumps(page_structure, ensure_ascii=False, indent=2)}")
             
             # 再次检查内容是否可见
             if "当前笔记暂时无法浏览" in page_structure.get("bodyText", ""):
                 return "无法获取笔记内容: 当前笔记暂时无法浏览\n请检查链接是否有效或尝试使用带有有效token的完整URL。"
         except Exception as e:
-            print(f"打印页面结构时出错: {str(e)}")
+            logger.info(f"打印页面结构时出错: {str(e)}")
         
         # 获取帖子内容
         post_content = {}
         
         # 获取帖子标题 - 方法1：使用id选择器
         try:
-            print("尝试获取标题 - 方法1：使用id选择器")
+            logger.info("尝试获取标题 - 方法1：使用id选择器")
             if not main_page:  # 添加空检查
                 return "浏览器初始化失败，请重试"
                 
@@ -410,18 +448,18 @@ async def get_note_content(url: str) -> str:
             if title_element:
                 title = await title_element.text_content()
                 post_content["标题"] = title.strip() if title else "未知标题"
-                print(f"方法1获取到标题: {post_content['标题']}")
+                logger.info(f"方法1获取到标题: {post_content['标题']}")
             else:
-                print("方法1未找到标题元素")
+                logger.info("方法1未找到标题元素")
                 post_content["标题"] = "未知标题"
         except Exception as e:
-            print(f"方法1获取标题出错: {str(e)}")
+            logger.info(f"方法1获取标题出错: {str(e)}")
             post_content["标题"] = "未知标题"
         
         # 获取帖子标题 - 方法2：使用class选择器
         if post_content["标题"] == "未知标题":
             try:
-                print("尝试获取标题 - 方法2：使用class选择器")
+                logger.info("尝试获取标题 - 方法2：使用class选择器")
                 if not main_page:  # 添加空检查
                     return "浏览器初始化失败，请重试"
                     
@@ -429,16 +467,16 @@ async def get_note_content(url: str) -> str:
                 if title_element:
                     title = await title_element.text_content()
                     post_content["标题"] = title.strip() if title else "未知标题"
-                    print(f"方法2获取到标题: {post_content['标题']}")
+                    logger.info(f"方法2获取到标题: {post_content['标题']}")
                 else:
-                    print("方法2未找到标题元素")
+                    logger.info("方法2未找到标题元素")
             except Exception as e:
-                print(f"方法2获取标题出错: {str(e)}")
+                logger.info(f"方法2获取标题出错: {str(e)}")
         
         # 获取帖子标题 - 方法3：使用JavaScript
         if post_content["标题"] == "未知标题":
             try:
-                print("尝试获取标题 - 方法3：使用JavaScript")
+                logger.info("尝试获取标题 - 方法3：使用JavaScript")
                 if not main_page:  # 添加空检查
                     return "浏览器初始化失败，请重试"
                     
@@ -463,45 +501,45 @@ async def get_note_content(url: str) -> str:
                 ''')
                 if title:
                     post_content["标题"] = title
-                    print(f"方法3获取到标题: {post_content['标题']}")
+                    logger.info(f"方法3获取到标题: {post_content['标题']}")
                 else:
-                    print("方法3未找到标题元素")
+                    logger.info("方法3未找到标题元素")
             except Exception as e:
-                print(f"方法3获取标题出错: {str(e)}")
+                logger.info(f"方法3获取标题出错: {str(e)}")
         
         # 获取作者 - 方法1：使用username类选择器
         try:
-            print("尝试获取作者 - 方法1：使用username类选择器")
+            logger.info("尝试获取作者 - 方法1：使用username类选择器")
             author_element = await main_page.query_selector('span.username')
             if author_element:
                 author = await author_element.text_content()
                 post_content["作者"] = author.strip() if author else "未知作者"
-                print(f"方法1获取到作者: {post_content['作者']}")
+                logger.info(f"方法1获取到作者: {post_content['作者']}")
             else:
-                print("方法1未找到作者元素")
+                logger.info("方法1未找到作者元素")
                 post_content["作者"] = "未知作者"
         except Exception as e:
-            print(f"方法1获取作者出错: {str(e)}")
+            logger.info(f"方法1获取作者出错: {str(e)}")
             post_content["作者"] = "未知作者"
         
         # 获取作者 - 方法2：使用链接选择器
         if post_content["作者"] == "未知作者":
             try:
-                print("尝试获取作者 - 方法2：使用链接选择器")
+                logger.info("尝试获取作者 - 方法2：使用链接选择器")
                 author_element = await main_page.query_selector('a.name')
                 if author_element:
                     author = await author_element.text_content()
                     post_content["作者"] = author.strip() if author else "未知作者"
-                    print(f"方法2获取到作者: {post_content['作者']}")
+                    logger.info(f"方法2获取到作者: {post_content['作者']}")
                 else:
-                    print("方法2未找到作者元素")
+                    logger.info("方法2未找到作者元素")
             except Exception as e:
-                print(f"方法2获取作者出错: {str(e)}")
+                logger.info(f"方法2获取作者出错: {str(e)}")
         
         # 获取作者 - 方法3：使用JavaScript
         if post_content["作者"] == "未知作者":
             try:
-                print("尝试获取作者 - 方法3：使用JavaScript")
+                logger.info("尝试获取作者 - 方法3：使用JavaScript")
                 author = await main_page.evaluate('''
                     () => {
                         // 尝试多种可能的作者选择器
@@ -523,31 +561,31 @@ async def get_note_content(url: str) -> str:
                 ''')
                 if author:
                     post_content["作者"] = author
-                    print(f"方法3获取到作者: {post_content['作者']}")
+                    logger.info(f"方法3获取到作者: {post_content['作者']}")
                 else:
-                    print("方法3未找到作者元素")
+                    logger.info("方法3未找到作者元素")
             except Exception as e:
-                print(f"方法3获取作者出错: {str(e)}")
+                logger.info(f"方法3获取作者出错: {str(e)}")
         
         # 获取发布时间 - 方法1：使用date类选择器
         try:
-            print("尝试获取发布时间 - 方法1：使用date类选择器")
+            logger.info("尝试获取发布时间 - 方法1：使用date类选择器")
             time_element = await main_page.query_selector('span.date')
             if time_element:
                 time_text = await time_element.text_content()
                 post_content["发布时间"] = time_text.strip() if time_text else "未知"
-                print(f"方法1获取到发布时间: {post_content['发布时间']}")
+                logger.info(f"方法1获取到发布时间: {post_content['发布时间']}")
             else:
-                print("方法1未找到发布时间元素")
+                logger.info("方法1未找到发布时间元素")
                 post_content["发布时间"] = "未知"
         except Exception as e:
-            print(f"方法1获取发布时间出错: {str(e)}")
+            logger.info(f"方法1获取发布时间出错: {str(e)}")
             post_content["发布时间"] = "未知"
         
         # 获取发布时间 - 方法2：使用正则表达式匹配
         if post_content["发布时间"] == "未知":
             try:
-                print("尝试获取发布时间 - 方法2：使用正则表达式匹配")
+                logger.info("尝试获取发布时间 - 方法2：使用正则表达式匹配")
                 time_selectors = [
                     'text=/编辑于/',
                     r'text=/\d{2}-\d{2}/',
@@ -564,17 +602,17 @@ async def get_note_content(url: str) -> str:
                     if time_element:
                         time_text = await time_element.text_content()
                         post_content["发布时间"] = time_text.strip() if time_text else "未知"
-                        print(f"方法2获取到发布时间: {post_content['发布时间']}")
+                        logger.info(f"方法2获取到发布时间: {post_content['发布时间']}")
                         break
                     else:
-                        print(f"方法2未找到发布时间元素: {selector}")
+                        logger.info(f"方法2未找到发布时间元素: {selector}")
             except Exception as e:
-                print(f"方法2获取发布时间出错: {str(e)}")
+                logger.info(f"方法2获取发布时间出错: {str(e)}")
         
         # 获取发布时间 - 方法3：使用JavaScript
         if post_content["发布时间"] == "未知":
             try:
-                print("尝试获取发布时间 - 方法3：使用JavaScript")
+                logger.info("尝试获取发布时间 - 方法3：使用JavaScript")
                 time_text = await main_page.evaluate('''
                     () => {
                         // 尝试多种可能的时间选择器
@@ -616,15 +654,15 @@ async def get_note_content(url: str) -> str:
                 ''')
                 if time_text:
                     post_content["发布时间"] = time_text
-                    print(f"方法3获取到发布时间: {post_content['发布时间']}")
+                    logger.info(f"方法3获取到发布时间: {post_content['发布时间']}")
                 else:
-                    print("方法3未找到发布时间元素")
+                    logger.info("方法3未找到发布时间元素")
             except Exception as e:
-                print(f"方法3获取发布时间出错: {str(e)}")
+                logger.info(f"方法3获取发布时间出错: {str(e)}")
         
         # 获取帖子正文内容 - 方法1：使用精确的ID和class选择器
         try:
-            print("尝试获取正文内容 - 方法1：使用精确的ID和class选择器")
+            logger.info("尝试获取正文内容 - 方法1：使用精确的ID和class选择器")
             
             # 先明确标记评论区域
             await main_page.evaluate('''
@@ -658,24 +696,24 @@ async def get_note_content(url: str) -> str:
                     content_text = await content_element.text_content()
                     if content_text and len(content_text.strip()) > 50:  # 增加长度阈值
                         post_content["内容"] = content_text.strip()
-                        print(f"方法1获取到正文内容，长度: {len(post_content['内容'])}")
+                        logger.info(f"方法1获取到正文内容，长度: {len(post_content['内容'])}")
                     else:
-                        print(f"方法1获取到的内容太短: {len(content_text.strip()) if content_text else 0}")
+                        logger.info(f"方法1获取到的内容太短: {len(content_text.strip()) if content_text else 0}")
                         post_content["内容"] = "未能获取内容"
                 else:
-                    print("方法1找到的元素在评论区域内，跳过")
+                    logger.info("方法1找到的元素在评论区域内，跳过")
                     post_content["内容"] = "未能获取内容"
             else:
-                print("方法1未找到正文内容元素")
+                logger.info("方法1未找到正文内容元素")
                 post_content["内容"] = "未能获取内容"
         except Exception as e:
-            print(f"方法1获取正文内容出错: {str(e)}")
+            logger.info(f"方法1获取正文内容出错: {str(e)}")
             post_content["内容"] = "未能获取内容"
         
         # 获取帖子正文内容 - 方法2：使用XPath选择器
         if post_content["内容"] == "未能获取内容":
             try:
-                print("尝试获取正文内容 - 方法2：使用XPath选择器")
+                logger.info("尝试获取正文内容 - 方法2：使用XPath选择器")
                 # 使用XPath获取笔记内容区域
                 content_text = await main_page.evaluate('''
                     () => {
@@ -688,16 +726,16 @@ async def get_note_content(url: str) -> str:
                 
                 if content_text and len(content_text) > 20:
                     post_content["内容"] = content_text
-                    print(f"方法2获取到正文内容，长度: {len(post_content['内容'])}")
+                    logger.info(f"方法2获取到正文内容，长度: {len(post_content['内容'])}")
                 else:
-                    print(f"方法2获取到的内容太短或为空: {len(content_text) if content_text else 0}")
+                    logger.info(f"方法2获取到的内容太短或为空: {len(content_text) if content_text else 0}")
             except Exception as e:
-                print(f"方法2获取正文内容出错: {str(e)}")
+                logger.info(f"方法2获取正文内容出错: {str(e)}")
         
         # 获取帖子正文内容 - 方法3：使用JavaScript获取最长文本
         if post_content["内容"] == "未能获取内容":
             try:
-                print("尝试获取正文内容 - 方法3：使用JavaScript获取最长文本")
+                logger.info("尝试获取正文内容 - 方法3：使用JavaScript获取最长文本")
                 content_text = await main_page.evaluate('''
                     () => {
                         // 定义评论区域选择器
@@ -745,16 +783,16 @@ async def get_note_content(url: str) -> str:
                 
                 if content_text and len(content_text) > 100:  # 增加长度阈值
                     post_content["内容"] = content_text
-                    print(f"方法3获取到正文内容，长度: {len(post_content['内容'])}")
+                    logger.info(f"方法3获取到正文内容，长度: {len(post_content['内容'])}")
                 else:
-                    print(f"方法3获取到的内容太短或为空: {len(content_text) if content_text else 0}")
+                    logger.info(f"方法3获取到的内容太短或为空: {len(content_text) if content_text else 0}")
             except Exception as e:
-                print(f"方法3获取正文内容出错: {str(e)}")
+                logger.info(f"方法3获取正文内容出错: {str(e)}")
         
         # 获取帖子正文内容 - 方法4：区分正文和评论内容
         if post_content["内容"] == "未能获取内容":
             try:
-                print("尝试获取正文内容 - 方法4：区分正文和评论内容")
+                logger.info("尝试获取正文内容 - 方法4：区分正文和评论内容")
                 content_text = await main_page.evaluate('''
                     () => {
                         // 首先尝试获取note-content区域
@@ -790,16 +828,16 @@ async def get_note_content(url: str) -> str:
                 
                 if content_text and len(content_text) > 50:
                     post_content["内容"] = content_text
-                    print(f"方法4获取到正文内容，长度: {len(post_content['内容'])}")
+                    logger.info(f"方法4获取到正文内容，长度: {len(post_content['内容'])}")
                 else:
-                    print(f"方法4获取到的内容太短或为空: {len(content_text) if content_text else 0}")
+                    logger.info(f"方法4获取到的内容太短或为空: {len(content_text) if content_text else 0}")
             except Exception as e:
-                print(f"方法4获取正文内容出错: {str(e)}")
+                logger.info(f"方法4获取正文内容出错: {str(e)}")
         
         # 获取帖子正文内容 - 方法5：直接通过DOM结构定位
         if post_content["内容"] == "未能获取内容":
             try:
-                print("尝试获取正文内容 - 方法5：直接通过DOM结构定位")
+                logger.info("尝试获取正文内容 - 方法5：直接通过DOM结构定位")
                 content_text = await main_page.evaluate('''
                     () => {
                         // 根据您提供的HTML结构直接定位
@@ -833,11 +871,11 @@ async def get_note_content(url: str) -> str:
                 
                 if content_text and len(content_text) > 100:
                     post_content["内容"] = content_text
-                    print(f"方法5获取到正文内容，长度: {len(post_content['内容'])}")
+                    logger.info(f"方法5获取到正文内容，长度: {len(post_content['内容'])}")
                 else:
-                    print(f"方法5获取到的内容太短或为空: {len(content_text) if content_text else 0}")
+                    logger.info(f"方法5获取到的内容太短或为空: {len(content_text) if content_text else 0}")
             except Exception as e:
-                print(f"方法5获取正文内容出错: {str(e)}")
+                logger.info(f"方法5获取正文内容出错: {str(e)}")
         
         # 格式化返回结果
         result = f"标题: {post_content['标题']}\n"
@@ -868,7 +906,7 @@ async def get_note_comments(url: str) -> str:
     try:
         # 处理URL
         processed_url = process_url(url)
-        print(f"处理后的评论URL: {processed_url}")
+        logger.info(f"处理后的评论URL: {processed_url}")
         
         # 访问帖子链接
         await main_page.goto(processed_url, timeout=60000)
@@ -916,7 +954,7 @@ async def get_note_comments(url: str) -> str:
                 main_page.locator("text=评论").first
             ]
         except Exception as e:
-            print(f"创建评论区定位器时出错: {str(e)}")
+            logger.info(f"创建评论区定位器时出错: {str(e)}")
             # 继续执行，不阻断程序
         
         for locator in comment_section_locators:
@@ -926,7 +964,7 @@ async def get_note_comments(url: str) -> str:
                     await asyncio.sleep(2)
                     break
             except Exception as e:
-                print(f"滚动到评论区时出错: {str(e)}")
+                logger.info(f"滚动到评论区时出错: {str(e)}")
                 continue
         
         # 滚动页面以加载更多评论
@@ -956,10 +994,10 @@ async def get_note_comments(url: str) -> str:
                             await more_btn.click()
                             await asyncio.sleep(2)
                     except Exception as e:
-                        print(f"点击查看更多按钮时出错: {str(e)}")
+                        logger.info(f"点击查看更多按钮时出错: {str(e)}")
                         continue
             except Exception as e:
-                print(f"滚动页面加载更多评论时出错: {str(e)}")
+                logger.info(f"滚动页面加载更多评论时出错: {str(e)}")
                 pass
         
         # 获取评论
@@ -1002,7 +1040,7 @@ async def get_note_comments(url: str) -> str:
                                                 username = username_text.strip()
                                                 break
                                     except Exception as e:
-                                        print(f"获取用户名出错: {str(e)}")
+                                        logger.info(f"获取用户名出错: {str(e)}")
                                         continue
                                 
                                 # 如果没有找到，尝试通过用户链接查找
@@ -1014,7 +1052,7 @@ async def get_note_comments(url: str) -> str:
                                             if username_text:  # 添加空检查
                                                 username = username_text.strip()
                                     except Exception as e:
-                                        print(f"通过用户链接获取用户名出错: {str(e)}")
+                                        logger.info(f"通过用户链接获取用户名出错: {str(e)}")
                                 
                                 # 提取评论内容
                                 content = "未知内容"
@@ -1028,7 +1066,7 @@ async def get_note_comments(url: str) -> str:
                                                 content = content_text.strip()
                                                 break
                                     except Exception as e:
-                                        print(f"获取评论内容出错: {str(e)}")
+                                        logger.info(f"获取评论内容出错: {str(e)}")
                                         continue
                                 
                                 # 如果没有找到内容，可能内容就在评论元素本身
@@ -1041,7 +1079,7 @@ async def get_note_comments(url: str) -> str:
                                             else:
                                                 content = full_text.strip()
                                     except Exception as e:
-                                        print(f"获取评论全文出错: {str(e)}")
+                                        logger.info(f"获取评论全文出错: {str(e)}")
                                 
                                 # 提取评论时间
                                 time_location = "未知时间"
@@ -1055,7 +1093,7 @@ async def get_note_comments(url: str) -> str:
                                                 time_location = time_text.strip()
                                                 break
                                     except Exception as e:
-                                        print(f"获取评论时间出错: {str(e)}")
+                                        logger.info(f"获取评论时间出错: {str(e)}")
                                         continue
                                 
                                 # 如果内容有足够长度且找到用户名，添加评论
@@ -1066,14 +1104,14 @@ async def get_note_comments(url: str) -> str:
                                         "时间": time_location
                                     })
                             except Exception as e:
-                                print(f"处理单个评论出错: {str(e)}")
+                                logger.info(f"处理单个评论出错: {str(e)}")
                                 continue
                         
                         # 如果找到了评论，就不继续尝试其他选择器了
                         if comments:
                             break
             except Exception as e:
-                print(f"处理评论选择器出错: {str(e)}")
+                logger.info(f"处理评论选择器出错: {str(e)}")
                 continue
         
         # 如果没有找到评论，尝试使用其他方法
@@ -1284,7 +1322,7 @@ async def post_comment(url: str, comment: str) -> str:
     try:
         # 处理URL
         processed_url = process_url(url)
-        print(f"处理后的评论URL: {processed_url}")
+        logger.info(f"处理后的评论URL: {processed_url}")
         
         # 访问帖子链接
         await main_page.goto(processed_url, timeout=60000)
@@ -1342,7 +1380,7 @@ async def post_comment(url: str, comment: str) -> str:
                     comment_area_found = True
                     break
             except Exception as e:
-                print(f"定位评论区域时出错: {str(e)}")
+                logger.info(f"定位评论区域时出错: {str(e)}")
                 continue
         
         if not comment_area_found:
@@ -1375,7 +1413,7 @@ async def post_comment(url: str, comment: str) -> str:
                     comment_input = element
                     break
             except Exception as e:
-                print(f"定位评论输入框时出错: {str(e)}")
+                logger.info(f"定位评论输入框时出错: {str(e)}")
                 continue
         
         # 如果常规选择器失败，使用JavaScript查找
@@ -1416,7 +1454,7 @@ async def post_comment(url: str, comment: str) -> str:
                             comment_input = element
                             break
                     except Exception as e:
-                        print(f"尝试再次查找输入框时出错: {str(e)}")
+                        logger.info(f"尝试再次查找输入框时出错: {str(e)}")
                         continue
         
         if not comment_input:
@@ -1446,7 +1484,7 @@ async def post_comment(url: str, comment: str) -> str:
                 await asyncio.sleep(2)
                 send_success = True
         except Exception as e:
-            print(f"点击发送按钮出错: {str(e)}")
+            logger.info(f"点击发送按钮出错: {str(e)}")
         
         # 方法2: 如果方法1失败，尝试使用Enter键
         if not send_success:
@@ -1458,7 +1496,7 @@ async def post_comment(url: str, comment: str) -> str:
                 await asyncio.sleep(2)
                 send_success = True
             except Exception as e:
-                print(f"使用Enter键发送出错: {str(e)}")
+                logger.info(f"使用Enter键发送出错: {str(e)}")
         
         # 方法3: 如果方法2失败，尝试使用JavaScript点击发送按钮
         if not send_success:
@@ -1480,7 +1518,7 @@ async def post_comment(url: str, comment: str) -> str:
                 await asyncio.sleep(2)
                 send_success = js_send_result
             except Exception as e:
-                print(f"使用JavaScript点击发送按钮出错: {str(e)}")
+                logger.info(f"使用JavaScript点击发送按钮出错: {str(e)}")
         
         if send_success:
             return f"已成功发布评论：{comment}"
@@ -1493,8 +1531,8 @@ async def post_comment(url: str, comment: str) -> str:
 def main():
     """MCP服务器主入口函数"""
     # 初始化并运行服务器
-    print("启动小红书MCP服务器...")
-    print("请在MCP客户端（如Claude for Desktop）中配置此服务器")
+    logger.info("启动小红书MCP服务器...")
+    logger.info("请在MCP客户端（如Claude for Desktop）中配置此服务器")
     mcp.run(transport='stdio')
 
 
