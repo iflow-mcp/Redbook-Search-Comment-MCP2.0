@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iflow-mcp_redbook-search-comment-mcp"
-version = "2.0.0"
+version = "2.0.1"
 description = "小红书自动搜索评论工具（MCP Server 2.0）"
 authors = [
     {name = "chenningling", email = ""},
